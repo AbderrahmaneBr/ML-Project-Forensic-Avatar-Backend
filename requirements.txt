@@ -6,13 +6,15 @@ pydantic
 minio
 pillow
 ultralytics  # YOLOv8 (includes torch)
-pytesseract  # OCR wrapper for Tesseract
+easyocr  # Optimized OCR model
 python-multipart
-ollama  # Local LLM inference
-openai
+openai  # Used for Groq API (OpenAI-compatible SDK)
 
 # Streaming
 sse-starlette  # Server-Sent Events for FastAPI
+
+# HTTP requests for TTS
+requests
 
 # Testing
 pytest

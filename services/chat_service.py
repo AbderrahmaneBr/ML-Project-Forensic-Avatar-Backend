@@ -1,24 +1,15 @@
-"""Chat service for conversation-based LLM interactions."""
-import os
+"""Chat service for conversation-based LLM interactions using Groq."""
 from collections.abc import Generator
 from typing import cast
 from uuid import UUID
 
-import ollama
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from backend.db.models import Conversation, Message, MessageRole, Image, DetectedObject, ExtractedText
-from backend.config import OPENAI_API_KEY, GROQ_API_KEY
+from backend.config import GROQ_API_KEY
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:0.6b")
-OPENAI_MODEL = "gpt-4o-mini"
-GROQ_MODEL = "llama-3.3-70b-versatile" 
-
-# Initialize OpenAI client if key is present
-_openai_client = None
-if OPENAI_API_KEY:
-    _openai_client = OpenAI(api_key=OPENAI_API_KEY)
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # Initialize Groq client
 _groq_client = None
@@ -34,8 +25,10 @@ Be concise and direct. Keep responses under 100 words unless asked for detail.""
 
 # Forensic analysis prompt for when there's actual evidence
 FORENSIC_SYSTEM_PROMPT = """You are a forensic analyst. Analyze evidence and provide brief, actionable insights.
-Keep responses SHORT (under 150 words). List key findings, then a brief hypothesis.
-Be professional and direct. No dramatic narration."""
+Keep responses SHORT (under 150 words).
+Speak naturally as a forensic detective explaining the situation to a colleague.
+Do NOT use headers like 'Analysis:' or 'Hypothesis:'. Do NOT list findings as bullet points unless necessary for clarity.
+Be professional and direct."""
 
 
 def _confidence_label(confidence: float) -> str:
@@ -74,6 +67,9 @@ def _build_evidence_context(db: Session, conversation_id: UUID) -> str:
             label = f"{_confidence_label(conf_val)} \"{text.text}\""
             all_texts.append(label)
 
+    if not all_objects and not all_texts:
+        return "Analysis completed. No specific threats, objects, or text were detected in this image."
+
     objects_str = ", ".join(all_objects) if all_objects else "No objects detected"
     texts_str = ", ".join(all_texts) if all_texts else "No text extracted"
 
@@ -92,13 +88,13 @@ def _build_message_history(
     evidence_context = ""
     if include_evidence:
         evidence_context = _build_evidence_context(db, conversation_id)
-    
+
     # Use forensic prompt if there's evidence, otherwise conversational
     if evidence_context:
         system_prompt = FORENSIC_SYSTEM_PROMPT
     else:
         system_prompt = CHAT_SYSTEM_PROMPT
-    
+
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
     # Add evidence context as the first user message if there's evidence
@@ -125,13 +121,15 @@ def _build_message_history(
 def chat(
     db: Session,
     conversation_id: UUID,
-    user_message: str,
-    model: str = OLLAMA_MODEL
+    user_message: str
 ) -> str:
     """
     Send a message in a conversation and get a response.
     Maintains full conversation history for context.
     """
+    if not _groq_client:
+        return "[ERROR] Groq API key not configured."
+
     # Build message history
     messages = _build_message_history(db, conversation_id)
 
@@ -139,8 +137,11 @@ def chat(
     messages.append({"role": "user", "content": user_message})
 
     try:
-        response = ollama.chat(model=model, messages=messages)
-        content = response["message"]["content"]
+        response = _groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages
+        )
+        content = response.choices[0].message.content or ""
         return " ".join(content.split())  # Clean up whitespace
     except Exception as e:
         return f"Unable to generate response: {str(e)}"
@@ -149,45 +150,30 @@ def chat(
 def chat_stream(
     db: Session,
     conversation_id: UUID,
-    user_message: str,
-    model: str = OLLAMA_MODEL,
-    use_groq: bool = False
+    user_message: str
 ) -> Generator[str, None, None]:
     """
-    Stream a chat response token by token.
+    Stream a chat response token by token using Groq.
     """
+    if not _groq_client:
+        yield "[ERROR] Groq API Key not configured."
+        return
+
     # Build message history
     messages = _build_message_history(db, conversation_id)
 
     # Add the new user message
     messages.append({"role": "user", "content": user_message})
 
-    if use_groq:
-        if not _groq_client:
-             yield "[ERROR] Groq API Key not configured."
-             return
-
-        try:
-            stream = _groq_client.chat.completions.create(
-                messages=messages,
-                model=GROQ_MODEL,
-                stream=True
-            )
-            for chunk in stream:
-                token = chunk.choices[0].delta.content
-                if token:
-                    yield token
-        except Exception as e:
-            yield f"[ERROR] Groq Error: {str(e)}"
-        return
-
     try:
-        stream = ollama.chat(model=model, messages=messages, stream=True)
-
+        stream = _groq_client.chat.completions.create(
+            messages=messages,
+            model=GROQ_MODEL,
+            stream=True
+        )
         for chunk in stream:
-            token = chunk["message"]["content"]
+            token = chunk.choices[0].delta.content
             if token:
                 yield token
-
     except Exception as e:
-        yield f"[ERROR] Unable to generate response: {str(e)}"
+        yield f"[ERROR] Groq Error: {str(e)}"

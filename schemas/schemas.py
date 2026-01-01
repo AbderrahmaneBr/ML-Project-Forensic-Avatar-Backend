@@ -35,7 +35,6 @@ class MessageResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    use_groq: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -141,7 +140,7 @@ class OCRResponse(BaseModel):
 class AnalyzeRequest(BaseModel):
     conversation_id: UUID
     context: Optional[str] = Field(None, description="Additional context or description about the case")
-    use_basic_pipeline: bool = Field(False, description="Use YOLO+OCR+OpenAI pipeline (basic) instead of GPT-4o Vision (premium)")
+    model: str = Field("local", pattern="^(local|gpt4o)$", description="Model to use: 'local' (YOLO+OCR) or 'gpt4o'")
 
 
 class ImageAnalysisResult(BaseModel):

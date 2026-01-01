@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import conversation, upload, detect, ocr, analyze, chat, jobs, tts
+from backend.api import conversation, upload, detect, ocr, analyze, chat, tts
 from backend.db.database import create_tables
 
 
@@ -30,5 +30,4 @@ app.include_router(detect.router, prefix="/api/v1/detect", tags=["Detection"])
 app.include_router(ocr.router, prefix="/api/v1/ocr", tags=["OCR"])
 app.include_router(analyze.router, prefix="/api/v1/analyze", tags=["Analysis"])
 app.include_router(chat.router, prefix="/api/v1/conversations", tags=["Chat"])
-app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["Jobs"])
 app.include_router(tts.router, prefix="/api/v1/tts", tags=["TTS"])

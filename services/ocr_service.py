@@ -1,15 +1,23 @@
-"""OCR service using Tesseract for text extraction."""
-import os
+"""OCR service using EasyOCR for text extraction."""
 import httpx
-import tempfile
-
-import pytesseract
+import easyocr
+import numpy as np
 from PIL import Image
+from io import BytesIO
 
+# Initialized lazily
+_reader = None
+
+def get_reader():
+    global _reader
+    if _reader is None:
+        # Initialize for English. add other languages if needed
+        _reader = easyocr.Reader(['en'])
+    return _reader
 
 def extract_text(image_url: str) -> list[dict]:
     """
-    Extract text from an image using Tesseract OCR.
+    Extract text from an image using EasyOCR.
     
     Args:
         image_url: URL or path to the image
@@ -17,79 +25,51 @@ def extract_text(image_url: str) -> list[dict]:
     Returns:
         List of extracted text items with text, confidence, and position
     """
+    image_input = image_url
+    
     # Download image if URL
     if image_url.startswith(('http://', 'https://')):
-        with httpx.Client(timeout=30.0) as client:
-            response = client.get(image_url)
-            response.raise_for_status()
-            image_data = response.content
-            
-            # Save temporarily
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
-                f.write(image_data)
-                temp_path = f.name
-            
-            try:
-                img = Image.open(temp_path)
-                results = _extract_from_image(img)
-            finally:
-                os.unlink(temp_path)
-    else:
-        img = Image.open(image_url)
-        results = _extract_from_image(img)
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.get(image_url)
+                response.raise_for_status()
+                # Pass bytes directly to EasyOCR
+                image_input = response.content
+        except Exception as e:
+            print(f"Failed to download image: {e}")
+            return []
     
-    return results
+    return _run_ocr(image_input)
 
 
-def _extract_from_image(img: Image.Image) -> list[dict]:
+def _run_ocr(image_input) -> list[dict]:
     """
-    Extract text with detailed information from a PIL Image.
-    
-    Args:
-        img: PIL Image object
-    
-    Returns:
-        List of extracted text items
+    Run EasyOCR on the input (bytes, path, or array).
     """
-    # Get detailed OCR data
     try:
-        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        reader = get_reader()
+        # detail=1 returns [bbox, text, conf]
+        results = reader.readtext(image_input, detail=1)
     except Exception as e:
-        print(f"Tesseract error: {e}")
+        print(f"EasyOCR error: {e}")
         return []
     
-    results = []
-    n_boxes = len(data['text'])
+    extracted_data = []
     
-    for i in range(n_boxes):
-        text = data['text'][i].strip()
-        conf = int(data['conf'][i]) if data['conf'][i] != -1 else 0
-        
-        # Skip empty text or very low confidence
-        if not text or conf < 10:
+    for (bbox, text, conf) in results:
+        text = text.strip()
+        if not text or conf < 0.5:  # 50% confidence threshold
             continue
+            
+        # bbox is [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
+        # We'll use top-left (x1, y1) for position
+        top_left = bbox[0]
         
-        results.append({
+        extracted_data.append({
             "text": text,
-            "confidence": conf / 100.0,  # Normalize to 0-1
-            "position_x": float(data['left'][i]),
-            "position_y": float(data['top'][i]),
+            "confidence": float(conf),
+            "position_x": float(top_left[0]),
+            "position_y": float(top_left[1]),
         })
-    
-    # Also get full text blocks (for better context)
-    # Group adjacent words into lines/blocks
-    if not results:
-        # Fallback: try simple text extraction
-        try:
-            full_text = pytesseract.image_to_string(img).strip()
-            if full_text:
-                results.append({
-                    "text": full_text,
-                    "confidence": 0.7,
-                    "position_x": 0.0,
-                    "position_y": 0.0,
-                })
-        except Exception:
-            pass
-    
-    return results
+        
+    return extracted_data

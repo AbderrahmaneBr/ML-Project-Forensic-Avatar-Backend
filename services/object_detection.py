@@ -10,7 +10,7 @@ from PIL import Image
 from ultralytics import YOLO
 
 # Path to the threat detection model (relative to this file)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "weights", "threat_yolov8n.pt")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "weights", "Suspicious_Activities_nano.pt")
 
 # Load the model once when the module is imported
 _model: YOLO | None = None
@@ -24,7 +24,7 @@ def get_model() -> YOLO:
     return _model
 
 
-def detect_objects(image_url: str, confidence_threshold: float = 0.25) -> list[dict]:
+def detect_objects(image_url: str, confidence_threshold: float = 0.6) -> list[dict]:
     """
     Run object detection on an image URL.
     

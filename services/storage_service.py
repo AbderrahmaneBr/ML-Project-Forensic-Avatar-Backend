@@ -51,3 +51,18 @@ def delete_file(object_name: str) -> None:
     """Delete a file from MinIO."""
     clean_name = extract_object_name(object_name)
     client.remove_object(BUCKET_NAME, clean_name)
+
+
+def get_file_bytes(object_name: str) -> bytes:
+    """Retrieve a file's bytes from MinIO."""
+    clean_name = extract_object_name(object_name)
+    response = None
+    try:
+        response = client.get_object(BUCKET_NAME, clean_name)
+        return response.read()
+    finally:
+        if response:
+            response.close()
+            
+            
+    response.release_conn()

@@ -77,8 +77,7 @@ async def run_in_thread(func, *args):
 async def chat_stream_generator(
     conversation_id: UUID,
     user_message: str,
-    db: Session,
-    use_groq: bool = False
+    db: Session
 ) -> AsyncGenerator[dict, None]:
     """Generate SSE events for streaming chat."""
     # Save user message first
@@ -97,7 +96,7 @@ async def chat_stream_generator(
     queue: asyncio.Queue[str | None] = asyncio.Queue()
 
     def stream_to_queue():
-        for token in chat_stream(db, conversation_id, user_message, use_groq=use_groq):
+        for token in chat_stream(db, conversation_id, user_message):
             queue.put_nowait(token)
         queue.put_nowait(None)
 
@@ -149,7 +148,7 @@ async def send_message_stream(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return EventSourceResponse(
-        chat_stream_generator(conversation_id, request.message, db, use_groq=request.use_groq),
+        chat_stream_generator(conversation_id, request.message, db),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )

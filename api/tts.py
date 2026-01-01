@@ -12,18 +12,16 @@ router = APIRouter()
 class TTSRequest(BaseModel):
     text: str
     voice: Optional[str] = None  # 'male', 'female', or specific voice name
-    provider: Optional[str] = "groq" # 'groq' or 'elevenlabs'
 
 
 @router.post("/", response_class=StreamingResponse)
 async def text_to_speech(request: TTSRequest):
     """
-    Convert text to speech audio via Groq Playai TTS or ElevenLabs.
+    Convert text to speech audio via Groq TTS.
     
     Args:
         text: The text to convert
         voice: 'male', 'female', or a specific voice name
-        provider: 'groq' (Basic) or 'elevenlabs' (Premium)
     
     Returns streaming audio (mp3).
     """
@@ -33,8 +31,7 @@ async def text_to_speech(request: TTSRequest):
     try:
         audio_stream = generate_speech_stream(
             request.text.strip(),
-            voice=request.voice or "male",
-            provider=request.provider or "groq"
+            voice=request.voice or "male"
         )
         return StreamingResponse(
             audio_stream,
